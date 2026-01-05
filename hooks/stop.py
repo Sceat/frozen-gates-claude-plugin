@@ -12,47 +12,26 @@ from pathlib import Path
 
 try:
     import yaml
-    HAS_YAML = True
 except ImportError:
-    HAS_YAML = False
+    print("frozen-gates: PyYAML required - install via your package manager", file=sys.stderr)
+    sys.exit(1)
 
 DEFAULT_LOC_LIMIT = 500
 DEFAULT_LOC_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".go", ".vue"]
 
 
-def load_config():
-    """Load frozengates config.
-
-    Resolution order:
-    1. $FROZENGATES_CONFIG env var
-    2. $CLAUDE_PROJECT_DIR/.claude/frozengates.yaml (project scope)
-    3. ~/.claude/frozengates.yaml (user scope)
-    """
-    # Check env var first
-    if os.environ.get("FROZENGATES_CONFIG"):
-        config_path = os.environ["FROZENGATES_CONFIG"]
-    # Check project scope
-    elif os.environ.get("CLAUDE_PROJECT_DIR"):
-        project_config = os.path.join(os.environ["CLAUDE_PROJECT_DIR"], ".claude", "frozengates.yaml")
-        if os.path.exists(project_config):
-            config_path = project_config
-        else:
-            config_path = os.path.expanduser("~/.claude/frozengates.yaml")
-    # Fall back to user scope
-    else:
-        config_path = os.path.expanduser("~/.claude/frozengates.yaml")
-
-    if not os.path.exists(config_path):
-        return None
-
-    if not HAS_YAML:
-        return None
-
+def find_git_root(path):
+    """Find git root for a path."""
     try:
-        with open(config_path) as f:
-            return yaml.safe_load(f)
+        result = subprocess.run(
+            ["git", "-C", path, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
     except Exception:
-        return None
+        pass
+    return None
 
 
 def get_loc_config(config, repo_path):
@@ -86,60 +65,37 @@ def get_loc_config(config, repo_path):
     }
 
 
-def find_git_root(path):
-    """Find git root for a path."""
+def get_session_modified_files(transcript_path):
+    """Extract modified files from session transcript."""
+    modified = set()
+
+    if not transcript_path or not os.path.exists(transcript_path):
+        return list(modified)
+
     try:
-        result = subprocess.run(
-            ["git", "-C", path, "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
+        with open(transcript_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    # Tool calls are nested in message.content[]
+                    message = entry.get("message", {})
+                    content = message.get("content", [])
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "tool_use":
+                            tool_name = item.get("name", "")
+                            if tool_name in ("Write", "Edit"):
+                                file_path = item.get("input", {}).get("file_path")
+                                if file_path:
+                                    modified.add(os.path.abspath(os.path.expanduser(file_path)))
+                except json.JSONDecodeError:
+                    continue
     except Exception:
         pass
-    return None
 
-
-def get_changed_files():
-    """Get all changed files in current directory's git repo."""
-    cwd = os.getcwd()
-    git_root = find_git_root(cwd)
-    if not git_root:
-        return [], None
-
-    try:
-        all_files = []
-
-        # Unstaged changes
-        result = subprocess.run(
-            ["git", "-C", git_root, "diff", "--name-only", "HEAD"],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.stdout.strip():
-            all_files.extend(result.stdout.strip().split("\n"))
-
-        # Staged changes
-        result2 = subprocess.run(
-            ["git", "-C", git_root, "diff", "--cached", "--name-only"],
-            capture_output=True, text=True, timeout=5
-        )
-        if result2.stdout.strip():
-            all_files.extend(result2.stdout.strip().split("\n"))
-
-        # Untracked files
-        result3 = subprocess.run(
-            ["git", "-C", git_root, "ls-files", "--others", "--exclude-standard"],
-            capture_output=True, text=True, timeout=5
-        )
-        if result3.stdout.strip():
-            all_files.extend(result3.stdout.strip().split("\n"))
-
-        # Convert to absolute paths
-        abs_files = [os.path.join(git_root, f) for f in set(all_files)]
-        return abs_files, git_root
-
-    except Exception:
-        return [], None
+    return list(modified)
 
 
 def count_loc(file_path):
@@ -160,18 +116,60 @@ def matches_pattern(filename, patterns):
     return False
 
 
-def main():
-    config = load_config()
-    changed_files, git_root = get_changed_files()
+def load_config():
+    """Load config from session's project dir or user scope.
 
-    if not changed_files:
+    Resolution order:
+    1. $CLAUDE_PROJECT_DIR/.claude/frozengates.yaml (session scope)
+    2. ~/.claude/frozengates.yaml (user scope)
+    """
+    # Check session's project dir
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    if project_dir:
+        project_config = os.path.join(project_dir, ".claude", "frozengates.yaml")
+        if os.path.exists(project_config):
+            with open(project_config) as f:
+                return yaml.safe_load(f)
+
+    # Fall back to user scope
+    user_config = os.path.expanduser("~/.claude/frozengates.yaml")
+    if os.path.exists(user_config):
+        with open(user_config) as f:
+            return yaml.safe_load(f)
+
+    return None
+
+
+def main():
+    # Read hook input from stdin
+    try:
+        hook_input = json.load(sys.stdin)
+    except Exception:
+        hook_input = {}
+
+    transcript_path = hook_input.get("transcript_path")
+    if transcript_path:
+        transcript_path = os.path.expanduser(transcript_path)
+
+    config = load_config()
+    if not config:
+        # No config = no LOC enforcement
+        sys.exit(0)
+
+    modified_files = get_session_modified_files(transcript_path)
+
+    if not modified_files:
         sys.exit(0)
 
     violations = []
 
-    for file_path in changed_files:
+    for file_path in modified_files:
         if not os.path.exists(file_path):
             continue
+
+        # Get git root for this file (for relative path display)
+        file_dir = os.path.dirname(file_path)
+        git_root = find_git_root(file_dir)
 
         ext = Path(file_path).suffix
         loc_config = get_loc_config(config, file_path)
