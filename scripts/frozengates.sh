@@ -16,7 +16,8 @@ NC='\033[0m' # No Color
 # Config path resolution:
 # 1. -c <config> flag
 # 2. $FROZENGATES_CONFIG environment variable
-# 3. ~/.claude/frozengates.yaml (default)
+# 3. $CLAUDE_PROJECT_DIR/.claude/frozengates.yaml (project scope)
+# 4. ~/.claude/frozengates.yaml (global fallback)
 CONFIG_PATH=""
 
 show_help() {
@@ -34,7 +35,8 @@ show_help() {
     echo "Config resolution:"
     echo "  1. -c <config> flag"
     echo "  2. \$FROZENGATES_CONFIG environment variable"
-    echo "  3. ~/.claude/frozengates.yaml (default)"
+    echo "  3. \$CLAUDE_PROJECT_DIR/.claude/frozengates.yaml (project scope)"
+    echo "  4. ~/.claude/frozengates.yaml (global fallback)"
     echo ""
     echo "Current config: $CONFIG_PATH"
 }
@@ -51,8 +53,10 @@ shift $((OPTIND - 1))
 
 # Resolve config path if not set by flag
 if [[ -z "$CONFIG_PATH" ]]; then
-    if [[ -n "${FROZENGATES_CONFIG:-}" ]]; then
+    if [[ -n "$FROZENGATES_CONFIG" ]]; then
         CONFIG_PATH="$FROZENGATES_CONFIG"
+    elif [[ -n "$CLAUDE_PROJECT_DIR" && -f "$CLAUDE_PROJECT_DIR/.claude/frozengates.yaml" ]]; then
+        CONFIG_PATH="$CLAUDE_PROJECT_DIR/.claude/frozengates.yaml"
     else
         CONFIG_PATH="$HOME/.claude/frozengates.yaml"
     fi

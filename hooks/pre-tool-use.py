@@ -18,8 +18,26 @@ except ImportError:
 
 
 def load_config():
-    """Load frozengates config."""
-    config_path = os.environ.get("FROZENGATES_CONFIG", os.path.expanduser("~/.claude/frozengates.yaml"))
+    """Load frozengates config.
+
+    Resolution order:
+    1. $FROZENGATES_CONFIG env var
+    2. $CLAUDE_PROJECT_DIR/.claude/frozengates.yaml (project scope)
+    3. ~/.claude/frozengates.yaml (user scope)
+    """
+    # Check env var first
+    if os.environ.get("FROZENGATES_CONFIG"):
+        config_path = os.environ["FROZENGATES_CONFIG"]
+    # Check project scope
+    elif os.environ.get("CLAUDE_PROJECT_DIR"):
+        project_config = os.path.join(os.environ["CLAUDE_PROJECT_DIR"], ".claude", "frozengates.yaml")
+        if os.path.exists(project_config):
+            config_path = project_config
+        else:
+            config_path = os.path.expanduser("~/.claude/frozengates.yaml")
+    # Fall back to user scope
+    else:
+        config_path = os.path.expanduser("~/.claude/frozengates.yaml")
 
     if not os.path.exists(config_path):
         return None
