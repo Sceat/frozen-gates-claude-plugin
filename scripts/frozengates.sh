@@ -17,8 +17,22 @@ NC='\033[0m' # No Color
 # 1. -c <config> flag
 # 2. $FROZENGATES_CONFIG environment variable
 # 3. $CLAUDE_PROJECT_DIR/.claude/frozengates.yaml (project scope)
-# 4. ~/.claude/frozengates.yaml (global fallback)
+# 4. Traverse upward from $PWD looking for .claude/frozengates.yaml (git-style discovery)
+# 5. ~/.claude/frozengates.yaml (global fallback)
 CONFIG_PATH=""
+
+# Find config by traversing upward from current directory
+find_config_upward() {
+    local dir="$PWD"
+    while [[ "$dir" != "/" ]]; do
+        if [[ -f "$dir/.claude/frozengates.yaml" ]]; then
+            echo "$dir/.claude/frozengates.yaml"
+            return 0
+        fi
+        dir="$(dirname "$dir")"
+    done
+    return 1
+}
 
 show_help() {
     echo -e "${BLUE}frozengates${NC} - Filesystem locks for Claude Code\n"
@@ -36,7 +50,8 @@ show_help() {
     echo "  1. -c <config> flag"
     echo "  2. \$FROZENGATES_CONFIG environment variable"
     echo "  3. \$CLAUDE_PROJECT_DIR/.claude/frozengates.yaml (project scope)"
-    echo "  4. ~/.claude/frozengates.yaml (global fallback)"
+    echo "  4. Traverse upward from \$PWD looking for .claude/frozengates.yaml"
+    echo "  5. ~/.claude/frozengates.yaml (global fallback)"
     echo ""
     echo "Current config: $CONFIG_PATH"
 }
@@ -57,6 +72,8 @@ if [[ -z "$CONFIG_PATH" ]]; then
         CONFIG_PATH="$FROZENGATES_CONFIG"
     elif [[ -n "$CLAUDE_PROJECT_DIR" && -f "$CLAUDE_PROJECT_DIR/.claude/frozengates.yaml" ]]; then
         CONFIG_PATH="$CLAUDE_PROJECT_DIR/.claude/frozengates.yaml"
+    elif CONFIG_PATH="$(find_config_upward)"; then
+        : # Found via upward search
     else
         CONFIG_PATH="$HOME/.claude/frozengates.yaml"
     fi
