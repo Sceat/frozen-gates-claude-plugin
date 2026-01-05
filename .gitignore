@@ -1,0 +1,7 @@
+frozengates.yaml
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

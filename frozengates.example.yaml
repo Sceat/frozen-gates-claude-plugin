@@ -1,0 +1,44 @@
+# frozengates configuration
+# Filesystem locks + LOC enforcement for Claude Code
+
+version: 1
+
+# Default settings (apply to all repos unless overridden)
+defaults:
+  loc:
+    limit: 500
+    extensions: [.ts, .tsx, .js, .jsx, .py, .rs, .go, .vue]
+
+repos:
+  # Lock specific files + use default LOC limit
+  my-frontend:
+    path: ~/dev/my-frontend
+    frozen:
+      - package.json
+      - package-lock.json
+      - vite.config.ts
+      - tsconfig.json
+
+  # Lock entire SDK (read-only)
+  my-sdk:
+    path: ~/dev/my-sdk
+    frozen_all: true
+
+  # Custom LOC limit for this repo
+  my-backend:
+    path: ~/dev/my-backend
+    frozen:
+      - Cargo.toml
+      - Cargo.lock
+    loc:
+      limit: 400           # Stricter than default
+      exclude:
+        - "*.test.ts"      # Don't check test files
+        - "*.spec.ts"
+
+  # Different LOC limit, different extensions
+  my-scripts:
+    path: ~/dev/my-scripts
+    loc:
+      limit: 200
+      extensions: [.sh, .py]

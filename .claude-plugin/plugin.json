@@ -1,0 +1,11 @@
+{
+  "name": "frozen-gates",
+  "description": "Filesystem protection for Claude Code - lock files to prevent AI modifications",
+  "version": "1.0.0",
+  "author": {
+    "name": "sceat"
+  },
+  "homepage": "https://github.com/sceat/frozen-gates-claude-plugin",
+  "repository": "https://github.com/sceat/frozen-gates-claude-plugin",
+  "license": "MIT"
+}
