@@ -1,0 +1,13 @@
+{
+  "name": "sceat-plugins",
+  "owner": {
+    "name": "sceat"
+  },
+  "plugins": [
+    {
+      "name": "frozen-gates",
+      "source": "./",
+      "description": "Filesystem protection + LOC enforcement for Claude Code"
+    }
+  ]
+}
