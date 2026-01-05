@@ -65,12 +65,11 @@ def get_loc_config(config, repo_path):
     }
 
 
-def get_session_modified_files(transcript_path):
-    """Extract modified files from session transcript."""
+def extract_modified_from_transcript(transcript_path):
+    """Extract Write/Edit file paths from a single transcript."""
     modified = set()
-
     if not transcript_path or not os.path.exists(transcript_path):
-        return list(modified)
+        return modified
 
     try:
         with open(transcript_path, "r", encoding="utf-8") as f:
@@ -94,6 +93,36 @@ def get_session_modified_files(transcript_path):
                     continue
     except Exception:
         pass
+
+    return modified
+
+
+def get_session_modified_files(transcript_path):
+    """Extract modified files from session transcript AND all subagent transcripts."""
+    modified = set()
+
+    if not transcript_path or not os.path.exists(transcript_path):
+        return list(modified)
+
+    # Extract session ID from main transcript filename
+    session_id = os.path.basename(transcript_path).replace('.jsonl', '')
+    transcript_dir = os.path.dirname(transcript_path)
+
+    # Get files from main transcript
+    modified.update(extract_modified_from_transcript(transcript_path))
+
+    # Find and process all agent-*.jsonl transcripts that belong to this session
+    for agent_transcript in Path(transcript_dir).glob('agent-*.jsonl'):
+        try:
+            with open(agent_transcript, "r", encoding="utf-8") as f:
+                first_line = f.readline().strip()
+                if first_line:
+                    entry = json.loads(first_line)
+                    # Only process agent transcripts that belong to this session
+                    if entry.get('sessionId') == session_id:
+                        modified.update(extract_modified_from_transcript(str(agent_transcript)))
+        except Exception:
+            continue
 
     return list(modified)
 
