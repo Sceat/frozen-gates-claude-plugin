@@ -196,11 +196,15 @@ def main():
     except Exception:
         hook_input = {}
 
-    # Skip LOC check if context window is critical (>90%)
-    # When context is full, hook errors create a death spiral - they keep
-    # triggering, adding more context, preventing /compact from working.
+    # Skip LOC check if:
+    # 1. Context window is critical (>90%) - death spiral prevention
+    # 2. This is a retry (stop_hook_active=true) - break the loop
+    # When context is full, hook errors keep triggering, adding more context,
+    # preventing /compact from working.
     context_pct = get_context_percent(hook_input)
-    if context_pct > 90:
+    stop_hook_active = hook_input.get("stop_hook_active", False)
+
+    if context_pct > 90 or stop_hook_active:
         sys.exit(0)  # Silent exit - don't add more context pollution
 
     transcript_path = hook_input.get("transcript_path")
