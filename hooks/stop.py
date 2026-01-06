@@ -169,12 +169,39 @@ def load_config():
     return None
 
 
+def get_context_percent(hook_input):
+    """Calculate context window usage percentage from hook input."""
+    try:
+        ctx = hook_input.get("context_window", {})
+        usage = ctx.get("current_usage", {})
+
+        current = (
+            usage.get("input_tokens", 0) +
+            usage.get("cache_creation_input_tokens", 0) +
+            usage.get("cache_read_input_tokens", 0)
+        )
+
+        size = ctx.get("context_window_size", 0)
+        if size > 0:
+            return (current * 100) / size
+    except Exception:
+        pass
+    return 0
+
+
 def main():
     # Read hook input from stdin
     try:
         hook_input = json.load(sys.stdin)
     except Exception:
         hook_input = {}
+
+    # Skip LOC check if context window is critical (>90%)
+    # When context is full, hook errors create a death spiral - they keep
+    # triggering, adding more context, preventing /compact from working.
+    context_pct = get_context_percent(hook_input)
+    if context_pct > 90:
+        sys.exit(0)  # Silent exit - don't add more context pollution
 
     transcript_path = hook_input.get("transcript_path")
     if transcript_path:
